@@ -46,3 +46,16 @@ Para una revisión profunda de la arquitectura del código y las soluciones impl
 * **Lenguaje:** C#
 * **Control de Versiones:** Git / GitHub
 * **Desarrollador:** Samuel Benjamín Baca Serrano (Universidad Cuauhtémoc, 5A)
+
+---
+
+## Instrucciones para abrir  
+* Crea una cuenta de Github.
+* Descarga Github Desktop.
+* Clona el repositorio en Github Desktop.
+* Crear una cuenta de Unity.
+* Descargar Unity Hub en la computadora.
+* Instalar la versión del editor "6000.3.9f1".
+* Dar clic en "Add" y posteriormente "Add from repository".
+* Busca la carpeta "Luminous-Hollow" y agrega el proyecto a Unity.
+* Ya debería poder abrirse.
