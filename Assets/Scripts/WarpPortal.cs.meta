@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f5e2b2c3dd473884e875c4a5c7c2eff2
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - exitPoint: {instanceID: 0}
+  - linkedPortal: {instanceID: 0}
+  - debugText: {instanceID: 0}
+  - portalSound: {fileID: 8300000, guid: 7b55fcb6d77b4b34ca7613f1d6d310f5, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
