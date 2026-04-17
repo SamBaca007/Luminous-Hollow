@@ -18,6 +18,7 @@ public class UIStateManager : MonoBehaviour
     public GameObject gameplayHUD;
     public GameObject pauseMenuPanel;
     public GameObject gameOverPanel;
+    public TextMeshProUGUI timerText; // El texto en el HUD
 
     // --- CAMBIO 2: Añadimos el espacio para el panel de victoria ---
     public GameObject victoryPanel;
@@ -26,14 +27,22 @@ public class UIStateManager : MonoBehaviour
     public TextMeshProUGUI stateText;
 
     // --- CAMBIO 3: Añadimos los espacios para los textos de puntuación ---
-    public TextMeshProUGUI scoreText; // El del HUD principal
-    public TextMeshProUGUI finalScoreText; // El que aparece en la pantalla de Game Over
-    public TextMeshProUGUI victoryScoreText; // El que aparece en la pantalla de Victoria
+    public TextMeshProUGUI orbText;   // NUEVO: El texto que dirá "Orbes: X / 30"
+    public TextMeshProUGUI scoreText;
+    public TextMeshProUGUI finalScoreText;
+    public TextMeshProUGUI finalTimeText;
+    public TextMeshProUGUI victoryScoreText;
+    public TextMeshProUGUI victoryTimeText;
 
     // --- CAMBIO 4: Las variables matemáticas para controlar la puntuación ---
-    [Header("Configuración de Puntuación")]
+    // --- LÓGICA DE ORBES Y PUNTOS ---
+    [Header("Configuración de Victoria y Puntuación")]
     public int currentScore = 0;
-    public int scoreToWin = 5000;
+
+    public int currentOrbs = 0;       // Contador de orbes
+    public int orbsToWin = 30;        // La meta real para ganar
+    private float gameTimer = 0f;      // Tiempo total de la partida
+    private float survivalTimer = 0f;  // Cronómetro interno para los 15 segundos
 
     [Header("Escenas")]
     public string menuSceneName = "MainMenu";
@@ -58,6 +67,13 @@ public class UIStateManager : MonoBehaviour
     public AudioMixer mainMixer;
     public Slider musicSlider;
     public Slider sfxSlider;
+
+    [Header("Feedback Visual de Puntos")]
+    public TextMeshProUGUI scoreFeedbackText; // El texto rojo/verde
+    private Coroutine feedbackCoroutine;
+
+    [Header("Rastreador Hitless")]
+    public bool isHitlessRun = true; // Empieza en true, se rompe si te pegan
     void Start()
     {
         // Esto asegura que el tiempo corra normal al iniciar cualquier escena
@@ -80,6 +96,7 @@ public class UIStateManager : MonoBehaviour
 
         // --- CAMBIO 5: Inicializamos el texto del Score para que empiece en 0 ---
         UpdateScoreUI();
+        UpdateOrbUI(); // --- NUEVO: Inicializamos el texto de orbes en 0/30 ---
 
         // --- NUEVO: Cargar los volúmenes guardados ---
         // PlayerPrefs.GetFloat("Nombre", ValorPorDefecto)
@@ -96,6 +113,31 @@ public class UIStateManager : MonoBehaviour
         {
             mainMixer.SetFloat("MusicVol", Mathf.Log10(Mathf.Max(0.0001f, savedMusicVol)) * 20);
             mainMixer.SetFloat("SFXVol", Mathf.Log10(Mathf.Max(0.0001f, savedSFXVol)) * 20);
+        }
+    }
+
+    void Update()
+    {
+        if (currentState == GameState.Gameplay)
+        {
+            // 1. Aumentamos los relojes
+            gameTimer += Time.deltaTime;
+            survivalTimer += Time.deltaTime;
+
+            // 2. Actualizamos el texto en pantalla (Formato MM:SS)
+            if (timerText != null)
+            {
+                int minutes = Mathf.FloorToInt(gameTimer / 60F);
+                int seconds = Mathf.FloorToInt(gameTimer - minutes * 60);
+                timerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+            }
+
+            // 3. Bono de Supervivencia (+10 pts cada 15 seg)
+            if (survivalTimer >= 15f)
+            {
+                AddScore(10);
+                survivalTimer = 0f; // Reiniciamos el contador
+            }
         }
     }
 
@@ -229,26 +271,49 @@ public class UIStateManager : MonoBehaviour
         }
     }
 
-    // --- NUEVAS FUNCIONES DE PUNTUACIÓN ---
+    // --- LÓGICA DE PUNTUACIÓN Y ORBES ---
 
-    // --- CAMBIO 6: La función que llamará el orbe para darnos puntos ---
-    public void AddScore(int points)
+    // Añadimos el "bool showFeedback = true" para controlar cuándo sale el texto flotante
+    public void AddScore(int points, bool showFeedback = true)
     {
         currentScore += points;
+        currentScore = Mathf.Max(0, currentScore);
         UpdateScoreUI();
 
-        if (currentScore >= scoreToWin)
+        // Disparamos la animación del texto de feedback
+        if (showFeedback && scoreFeedbackText != null && points != 0)
+        {
+            if (feedbackCoroutine != null) StopCoroutine(feedbackCoroutine);
+            feedbackCoroutine = StartCoroutine(ShowFeedbackRoutine(points));
+        }
+    }
+
+    // --- NUEVO: Función exclusiva para recolectar orbes ---
+    public void AddOrb()
+    {
+        currentOrbs++;
+        UpdateOrbUI();
+
+        // AHORA los orbes son los que disparan la victoria
+        if (currentOrbs >= orbsToWin)
         {
             TriggerVictory();
         }
     }
 
-    // --- CAMBIO 7: La función que actualiza el texto del HUD ---
     private void UpdateScoreUI()
     {
         if (scoreText != null)
         {
             scoreText.text = "Score: " + currentScore;
+        }
+    }
+
+    private void UpdateOrbUI()
+    {
+        if (orbText != null)
+        {
+            orbText.text = "Orbs: " + currentOrbs + " / " + orbsToWin;
         }
     }
 
@@ -280,6 +345,13 @@ public class UIStateManager : MonoBehaviour
             finalScoreText.text = "Final Score: " + currentScore;
         }
 
+        if (finalTimeText != null)
+        {
+            int minutes = Mathf.FloorToInt(gameTimer / 60F);
+            int seconds = Mathf.FloorToInt(gameTimer % 60);
+            finalTimeText.text = "Time: " + string.Format("{0:00}:{1:00}", minutes, seconds);
+        }
+
         // --- NUEVO: Cortar música de fondo ---
         // (El sonido del golpe final y la muerte ya lo reproduce PlayerHealth, así que aquí solo apagamos la música)
         if (bgmSource != null) bgmSource.Stop();
@@ -290,6 +362,38 @@ public class UIStateManager : MonoBehaviour
     // --- CAMBIO 9: La función que detiene todo y muestra que ganaste ---
     public void TriggerVictory()
     {
+        // --- BONOS FINALES DE VICTORIA ---
+        if (gameTimer < 210f)
+        {
+            AddScore(3000, false); // false para que no salga el popup verde
+            Debug.Log("¡SUPER SPEEDRUN!");
+        }
+        else if (gameTimer < 300f)
+        {
+            AddScore(2000, false);
+        }
+
+        // --- NUEVO: Bono Hitless ---
+        if (isHitlessRun)
+        {
+            AddScore(1000, false);
+            Debug.Log("¡HITLESS RUN! +1000 Puntos.");
+        }
+
+        Debug.Log("¡Meta alcanzada! Cambiando estado a Victory.");
+
+        // --- BONOS DE SPEEDRUN ---
+        if (gameTimer < 210f) // 3:30 minutos = 210 segundos
+        {
+            AddScore(3000);
+            Debug.Log("¡SUPER SPEEDRUN!");
+        }
+        else if (gameTimer < 300f) // 3 minutos = 300 segundos
+        {
+            AddScore(2000);
+            Debug.Log("¡SPEEDRUN NORMAL!");
+        }
+
         Debug.Log("¡Meta alcanzada! Cambiando estado a Victory.");
         ChangeState(GameState.Victory);
 
@@ -307,6 +411,13 @@ public class UIStateManager : MonoBehaviour
         if (victoryScoreText != null)
         {
             victoryScoreText.text = "Final Score: " + currentScore;
+        }
+
+        if (victoryTimeText != null)
+        {
+            int minutes = Mathf.FloorToInt(gameTimer / 60F);
+            int seconds = Mathf.FloorToInt(gameTimer % 60);
+            victoryTimeText.text = "Time: " + string.Format("{0:00}:{1:00}", minutes, seconds);
         }
 
         // --- NUEVO: Audio de Victoria ---
@@ -345,5 +456,38 @@ public class UIStateManager : MonoBehaviour
 
         float value = Mathf.Max(0.0001f, sliderValue);
         if (mainMixer != null) mainMixer.SetFloat("SFXVol", Mathf.Log10(value) * 20);
+    }
+
+    // Calcula el castigo dependiendo de tu progreso
+    public int GetDynamicPunishment(int basePenalty)
+    {
+        // Limitamos el multiplicador a un máximo de 2 (Mathf.Min)
+        // 0-9 orbes = x1 | 10+ orbes = x2 (Máximo)
+        int aggressionMultiplier = Mathf.Min(2, 1 + (currentOrbs / 10));
+        return basePenalty * aggressionMultiplier;
+    }
+
+    private IEnumerator ShowFeedbackRoutine(int points)
+    {
+        scoreFeedbackText.gameObject.SetActive(true);
+
+        // Configuramos el texto y el color (+ es verde, - es rojo)
+        scoreFeedbackText.text = points > 0 ? "+" + points : points.ToString();
+        scoreFeedbackText.color = points > 0 ? Color.green : Color.red;
+
+        // Animación de desvanecimiento (Fade Out)
+        float duration = 1.5f;
+        float timer = 0f;
+        Color startColor = scoreFeedbackText.color;
+        Color endColor = new Color(startColor.r, startColor.g, startColor.b, 0f);
+
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+            scoreFeedbackText.color = Color.Lerp(startColor, endColor, timer / duration);
+            yield return null; // Espera al siguiente frame
+        }
+
+        scoreFeedbackText.gameObject.SetActive(false);
     }
 }

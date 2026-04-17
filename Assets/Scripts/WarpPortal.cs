@@ -22,10 +22,12 @@ public class WarpPortal : MonoBehaviour
     public AudioClip portalSound;
 
     private SpriteRenderer spriteRenderer;
+    private UIStateManager uiManager;
 
     void Start()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
+        uiManager = FindObjectOfType<UIStateManager>();
         UpdateDebugText(0f);
     }
 
@@ -35,6 +37,15 @@ public class WarpPortal : MonoBehaviour
         {
             // 1. Teletransportamos al jugador primero
             other.transform.position = exitPoint.position;
+
+            // --- NUEVO: Castigo dinámico por usar el portal ---
+            if (uiManager != null)
+            {
+                // Usamos 50 como base, el Manager lo multiplicará según los orbes
+                int penalty = uiManager.GetDynamicPunishment(50);
+                uiManager.AddScore(-penalty);
+                Debug.Log("Portal usado. Penalización dinámica: -" + penalty);
+            }
 
             // 2. Iniciamos el cooldown en ESTE portal
             StartCoroutine(CooldownRoutine());

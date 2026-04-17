@@ -3,7 +3,8 @@ using TMPro;
 using System.Collections;
 
 [RequireComponent(typeof(PlayerStateManager))]
-[RequireComponent(typeof(SpriteRenderer))] // Nos aseguramos de tener acceso a su imagen
+[RequireComponent(typeof(SpriteRenderer))]
+[RequireComponent(typeof(Collider2D))] // --- NUEVO: Necesitamos el collider del jugador
 public class PlayerHealth : MonoBehaviour
 {
     [Header("Configuración de Vida")]
@@ -11,8 +12,8 @@ public class PlayerHealth : MonoBehaviour
     private int currentHealth;
 
     [Header("Configuración de Invencibilidad")]
-    public float invincibilityDuration = 2f; // Segundos que dura la invencibilidad
-    public float blinkInterval = 0.1f;       // Velocidad del parpadeo
+    public float invincibilityDuration = 2f;
+    public float blinkInterval = 0.1f;
 
     [Header("Interfaz de Usuario")]
     public TextMeshProUGUI healthText;
@@ -24,10 +25,11 @@ public class PlayerHealth : MonoBehaviour
     private AudioSource audioSource;
 
     private PlayerStateManager stateManager;
-    private SpriteRenderer spriteRenderer; // Referencia para hacer el parpadeo
+    private SpriteRenderer spriteRenderer;
+    private Collider2D playerCollider; // --- NUEVO: Referencia a nuestro collider
 
     private bool isDead = false;
-    private bool isInvincible = false; // Nuestro "escudo" de i-frames
+    private bool isInvincible = false;
 
     void Start()
     {
@@ -35,15 +37,27 @@ public class PlayerHealth : MonoBehaviour
         audioSource = GetComponent<AudioSource>();
         stateManager = GetComponent<PlayerStateManager>();
         spriteRenderer = GetComponent<SpriteRenderer>();
+        playerCollider = GetComponent<Collider2D>(); // --- NUEVO: Lo asignamos al inicio
         UpdateHealthUI();
     }
 
-    public void TakeDamage(int damageAmount)
+    // --- CAMBIO: Añadimos 'Collider2D enemyCollider' como parámetro opcional ---
+    public void TakeDamage(int damageAmount, Collider2D enemyCollider = null)
     {
-        // Si ya está muerto o si está en sus frames de invencibilidad, ignoramos el daño por completo
         if (isDead || isInvincible) return;
 
         currentHealth -= damageAmount;
+
+        if (uiManager != null)
+        {
+            // --- NUEVO: Adiós al sueño del Hitless ---
+            uiManager.isHitlessRun = false;
+
+            int penalty = uiManager.GetDynamicPunishment(200);
+            uiManager.AddScore(-penalty); // Como no pusimos "false", aparecerá el texto ROJO flotando
+
+            Debug.Log("¡Golpe! Puntos perdidos: -" + penalty);
+        }
 
         if (currentHealth < 0) currentHealth = 0;
 
@@ -51,7 +65,6 @@ public class PlayerHealth : MonoBehaviour
 
         if (currentHealth <= 0)
         {
-            // --- NUEVO: Sonido al morir ---
             if (deathSound != null && audioSource != null)
             {
                 audioSource.PlayOneShot(deathSound);
@@ -61,14 +74,13 @@ public class PlayerHealth : MonoBehaviour
         }
         else
         {
-            // --- NUEVO: Sonido al recibir daño y sobrevivir ---
             if (damageSound != null && audioSource != null)
             {
                 audioSource.PlayOneShot(damageSound);
             }
 
-            // Si sobrevivió al golpe, activamos la invencibilidad y el parpadeo
-            StartCoroutine(InvincibilityRoutine());
+            // Le pasamos el collider del enemigo a la corrutina
+            StartCoroutine(InvincibilityRoutine(enemyCollider));
         }
     }
 
@@ -83,14 +95,9 @@ public class PlayerHealth : MonoBehaviour
     private void Die()
     {
         isDead = true;
-
         spriteRenderer.enabled = true;
-
         stateManager.Die();
-
-        // --- NUEVA LÍNEA: Reproducimos la animación de muerte ---
         GetComponent<PlayerAnimator>()?.TriggerDeathAnimation();
-
         StartCoroutine(GameOverRoutine());
     }
 
@@ -104,35 +111,36 @@ public class PlayerHealth : MonoBehaviour
         }
     }
 
-    // --- NUEVO: Rutina de Invencibilidad y Parpadeo ---
-    private IEnumerator InvincibilityRoutine()
+    // --- CAMBIO: La corrutina ahora recibe el collider del enemigo ---
+    private IEnumerator InvincibilityRoutine(Collider2D enemyCollider)
     {
-        // 1. Activamos el escudo protector
         isInvincible = true;
-
-        // --- AVISAMOS QUE EMPIEZA EL ESTADO HURT ---
         stateManager.SetHurtState(true);
+
+        // 1. Apagamos la colisión física con ESTE enemigo en específico
+        if (enemyCollider != null && playerCollider != null)
+        {
+            Physics2D.IgnoreCollision(playerCollider, enemyCollider, true);
+        }
 
         float elapsedTime = 0f;
 
-        // 2. Mientras no se acabe el tiempo de invencibilidad, hacemos el parpadeo
         while (elapsedTime < invincibilityDuration)
         {
-            // Alternamos entre visible e invisible
             spriteRenderer.enabled = !spriteRenderer.enabled;
-
-            // Esperamos una fracción de segundo
             yield return new WaitForSeconds(blinkInterval);
-
-            // Sumamos el tiempo que acabamos de esperar al tiempo total transcurrido
             elapsedTime += blinkInterval;
         }
 
-        // 3. Al terminar el tiempo, nos aseguramos de que el sprite esté visible y quitamos el escudo
+        // 2. Restauramos todo a la normalidad
         spriteRenderer.enabled = true;
         isInvincible = false;
-
-        // --- AVISAMOS QUE TERMINA EL ESTADO HURT ---
         stateManager.SetHurtState(false);
+
+        // 3. Volvemos a encender la colisión con el enemigo
+        if (enemyCollider != null && playerCollider != null)
+        {
+            Physics2D.IgnoreCollision(playerCollider, enemyCollider, false);
+        }
     }
 }

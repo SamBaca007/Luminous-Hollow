@@ -29,13 +29,31 @@ public class EnemyStateManager : MonoBehaviour
     public float attackCooldown = 2f;
     private float lastAttackTime = 0f;
 
+    [Header("Configuración de Recompensas")]
+    public float nearMissThreshold = 1.5f; // Qué tan cerca debes estar para que cuente el esquive
+    public float nearMissCooldown = 4f;    // Segundos antes de poder hacer otro Near Miss
+    private float lastNearMissTime = -10f; // Empezamos en negativo para que el primer esquive siempre funcione
+
+    [Header("Escalado de Dificultad Dinámica")]
+    public float maxChaseSpeed = 7f;      // Velocidad al tener 30 orbes (Casi tan rápido como tú)
+    public float maxDetectionRadius = 8f; // Rango de visión gigante al final
+
+    private float baseChaseSpeed;
+    private float baseDetectionRadius;
+
     public event System.Action OnAttackEvent;
     public Vector2 MovementDirection { get; private set; }
+    private UIStateManager uiManager;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         agent = GetComponent<NavMeshAgent>();
+        uiManager = FindObjectOfType<UIStateManager>();
+
+        // Guardamos las estadísticas base
+        baseChaseSpeed = chaseSpeed;
+        baseDetectionRadius = detectionRadius;
 
         // --- NUEVO: Configuración CRÍTICA para que el NavMesh funcione en 2D ---
         agent.updateRotation = false; // Evita que el enemigo rote en 3D
@@ -47,6 +65,21 @@ public class EnemyStateManager : MonoBehaviour
     void Update()
     {
         if (player == null) return;
+
+        // --- LA NUEVA EVOLUCIÓN DEL ENEMIGO ---
+        if (uiManager != null)
+        {
+            // 1. Calculamos el progreso crudo (0.0 a 1.0)
+            float rawProgress = (float)uiManager.currentOrbs / (float)uiManager.orbsToWin;
+
+            // 2. LA MAGIA: Elevamos el progreso a la potencia de 2.5
+            // Esto crea una curva lenta al principio que sube de golpe al final.
+            float curveProgress = Mathf.Pow(rawProgress, 2.5f);
+
+            // Ajustamos las estadísticas usando la nueva curva
+            chaseSpeed = Mathf.Lerp(baseChaseSpeed, maxChaseSpeed, curveProgress);
+            detectionRadius = Mathf.Lerp(baseDetectionRadius, maxDetectionRadius, curveProgress);
+        }
 
         // Extraemos la dirección en la que el NavMeshAgent se está moviendo
         MovementDirection = agent.velocity.normalized;
@@ -150,10 +183,33 @@ public class EnemyStateManager : MonoBehaviour
         {
             float distanceToPlayer = Vector2.Distance(transform.position, player.position);
 
+            // 1. GOLPE CONECTADO
             if (distanceToPlayer <= attackRadius + 0.5f)
             {
-                player.GetComponent<PlayerHealth>()?.TakeDamage(1);
+                Collider2D myCollider = GetComponent<Collider2D>();
+                player.GetComponent<PlayerHealth>()?.TakeDamage(1, myCollider);
+
                 Debug.Log("¡Golpe conectado! HP reducido.");
+            }
+            // 2. NEAR MISS (Esquive Perfecto)
+            // Solo cuenta si estás FUERA del ataque, pero DENTRO de la zona de riesgo
+            else if (distanceToPlayer <= attackRadius + 0.5f + nearMissThreshold)
+            {
+                // Comprobamos si el Cooldown ya terminó
+                if (Time.time >= lastNearMissTime + nearMissCooldown)
+                {
+                    if (uiManager != null)
+                    {
+                        uiManager.AddScore(30);
+                        Debug.Log("¡Near Miss! +30 puntos.");
+                    }
+                    // Reiniciamos el reloj para que no lo puedan farmear
+                    lastNearMissTime = Time.time;
+                }
+                else
+                {
+                    Debug.Log("Esquive exitoso, pero el Near Miss está en Cooldown.");
+                }
             }
         }
     }
@@ -183,6 +239,13 @@ public class EnemyStateManager : MonoBehaviour
     {
         if (currentState != EnemyState.Stunned)
         {
+            // --- NUEVO: Recompensa por usar el Flash ---
+            if (uiManager != null)
+            {
+                uiManager.AddScore(150);
+                Debug.Log("¡Enemigo cegado! +150 puntos.");
+            }
+
             StartCoroutine(StunRoutine());
         }
     }

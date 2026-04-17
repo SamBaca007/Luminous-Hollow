@@ -10,7 +10,15 @@ public class OrbController : MonoBehaviour
     [Header("Audio SFX")]
     public AudioClip orbPickupSound;
 
+    [Header("Radar Audiovisual")]
+    public float maxHearingDistance = 15f; // A qué distancia se empieza a escuchar/ver
+    public SpriteRenderer glowSprite;
+    private AudioSource humAudio;
+    private SpriteRenderer orbSprite;
+    private Transform playerTransform;
+
     private UIStateManager uiManager;
+    private Vector3 baseScale;
 
     void Start()
     {
@@ -19,6 +27,38 @@ public class OrbController : MonoBehaviour
 
         // Nos movemos a un punto al azar desde el principio
         MoveToRandomSpawnPoint();
+
+        humAudio = GetComponent<AudioSource>();
+        orbSprite = GetComponent<SpriteRenderer>();
+        playerTransform = GameObject.FindGameObjectWithTag("Player").transform;
+
+        // Guardamos el tamaño que le pusiste en el editor de Unity
+        baseScale = transform.localScale;
+    }
+
+    void Update()
+    {
+        if (playerTransform != null)
+        {
+            // Calculamos a qué distancia está el jugador
+            float distance = Vector2.Distance(transform.position, playerTransform.position);
+
+            // 1. AUDIO: Es más fuerte cuando la distancia es cercana a 0
+            float audioIntensity = 1f - Mathf.Clamp01(distance / maxHearingDistance);
+            if (humAudio != null) humAudio.volume = audioIntensity;
+
+            // 2. VISUAL (Saviavida): El brillo de lejos y se apaga de cerca
+            if (glowSprite != null)
+            {
+                // visualIntensity es 1 cuando estás lejos (15m) y 0 cuando estás encima (0m)
+                float visualIntensity = Mathf.Clamp01(distance / maxHearingDistance);
+
+                Color glowColor = glowSprite.color;
+                // El canal Alpha (transparencia) se ata directamente a la distancia
+                glowColor.a = visualIntensity;
+                glowSprite.color = glowColor;
+            }
+        }
     }
 
     // Esta función se activa cuando alguien atraviesa el orbe
@@ -40,6 +80,7 @@ public class OrbController : MonoBehaviour
             if (uiManager != null)
             {
                 uiManager.AddScore(pointsValue);
+                uiManager.AddOrb();              // --- NUEVO: Avisamos que recogió un orbe ---
             }
 
             int dropChance = Random.Range(0, 4); // Genera un número: 0, 1, 2 o 3
